@@ -1,6 +1,7 @@
 import sys
 from datetime import datetime
 from time import sleep
+from decimal import getcontext, Decimal
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import StaleElementReferenceException, \
     TimeoutException, NoSuchElementException
+
 
 MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
           'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -51,15 +53,21 @@ def main():
 
     year = '2019'
     month = 'ENERO'
-    check_invoices(driver, year, month)
+    total_iva = Decimal('0')
+    monthly_iva = check_invoices(driver, year, month)
+    total_iva += monthly_iva
     month = 'FEBRERO'
-    check_invoices(driver, year, month)
+    monthly_iva = check_invoices(driver, year, month, total_iva)
+    total_iva += monthly_iva
+    month = 'MARZO'
+    monthly_iva = check_invoices(driver, year, month, total_iva)
+    total_iva += monthly_iva
 
     # driver.close()
     assert 1 == 0
 
 
-def check_invoices(driver, year, month):
+def check_invoices(driver, year, month, monthly_iva=Decimal('0')):
     wait = WebDriverWait(driver, 10)
 
     # year selection
@@ -88,6 +96,7 @@ def check_invoices(driver, year, month):
     first_number = int(first_number.text)
 
     if first_number > 1:
+        sleep(1)
         go_previous_page(driver)
         try:
             wait.until(EC.text_to_be_present_in_element(
@@ -95,10 +104,8 @@ def check_invoices(driver, year, month):
         except TimeoutException:
             print('timeout')
 
-    total_iva = 0
-
     table_iva = fill_in_table(driver)
-    total_iva += table_iva
+    monthly_iva += table_iva
 
     i = 1
     while has_next_page(driver):
@@ -111,7 +118,7 @@ def check_invoices(driver, year, month):
             str(first_number)))
 
         table_iva = fill_in_table(driver)
-        total_iva += table_iva
+        monthly_iva += table_iva
         i += 1
 
     driver.find_element_by_id(
@@ -133,23 +140,31 @@ def check_invoices(driver, year, month):
 
     summary_cells = driver.find_elements_by_css_selector(
             '.reporte .rich-table-row td')
-    total_iva_cell = float(summary_cells[-2].text)  # debe ser igual al total iva
+    total_iva_cell = Decimal(summary_cells[-2].text)  # debe ser igual al monthly iva
 
-    while total_iva_cell != total_iva:
-        summary_cells = driver.find_elements_by_css_selector(
-            '.reporte .rich-table-row td')
-        total_iva_cell = summary_cells[-2].text  # debe ser igual al total iva
+    while total_iva_cell != monthly_iva:
+        print('Iva cell:', total_iva_cell, ' Monthly iva: ', monthly_iva)
+        for i in range(4):
+            try:
+                summary_cells = driver.find_elements_by_css_selector(
+                    '.reporte .rich-table-row td')
+                total_iva_cell = summary_cells[-2].text  # debe ser igual al monthly iva
+                break
+            except StaleElementReferenceException:
+                print('Stale error')
+
+    return monthly_iva
 
 
 def fill_in_table(driver):
     table_rows = driver.find_elements_by_xpath(
         "//table[@id='j_id148:tblFacturas']/tbody/tr")
-    table_iva = 0
+    table_iva = Decimal('0')
 
     for row in table_rows:
         cells = row.find_elements_by_tag_name('td')
         iva = cells[4].text
-        table_iva += float(iva)
+        table_iva += Decimal(iva)
         iva_input = cells[5].find_element_by_tag_name('input')
         iva_input.send_keys(iva)
         checkbox = cells[8].find_element_by_tag_name('input')
