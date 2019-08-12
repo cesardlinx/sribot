@@ -3,8 +3,8 @@ from datetime import datetime
 MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
           'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
 
-year = '2018'
-month = 'OCTUBRE'
+year = '2019'
+month = 'ENERO'
 current_year = datetime.now().year
 current_month_index = datetime.now().month - 1
 previous_years = current_year - int(year)

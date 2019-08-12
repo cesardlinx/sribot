@@ -7,6 +7,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import StaleElementReferenceException, \
+    TimeoutException, NoSuchElementException
 
 MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
           'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -49,26 +51,12 @@ def main():
 
     year = '2019'
     month = 'ENERO'
-    current_year = datetime.now().year
-    current_month_index = datetime.now().month - 1
-    previous_years = current_year - int(year)
-
-    initial_index = MONTHS.index(month)
-
-    if previous_years:
-        # months in the first year
-        months = MONTHS[initial_index:]
-        for month in months:
-            check_invoices(driver, year, month)
-
-    # months in the actual year
-    months = MONTHS[:current_month_index]
-    year = str(current_year)
-    for month in months:
-        check_invoices(driver, year, month)
+    check_invoices(driver, year, month)
+    month = 'FEBRERO'
+    check_invoices(driver, year, month)
 
     # driver.close()
-    sys.exit()
+    assert 1 == 0
 
 
 def check_invoices(driver, year, month):
@@ -100,20 +88,17 @@ def check_invoices(driver, year, month):
     first_number = int(first_number.text)
 
     if first_number > 1:
-        expect_number = first_number - 10
-        id_number = (first_number - 1) - 10
-
-        # go to first page
-        while has_previous_page(driver):
-            go_previous_page(driver)
+        go_previous_page(driver)
+        try:
             wait.until(EC.text_to_be_present_in_element(
-                (By.ID, 'j_id148:tblFacturas:{}:j_id165'.format(id_number)),
-                str(expect_number)))
-    else:
-        wait.until(EC.text_to_be_present_in_element(
-            (By.ID, 'j_id148:tblFacturas:0:j_id165'), '1'))
+                (By.ID, 'j_id148:tblFacturas:0:j_id165'), '1'))
+        except TimeoutException:
+            print('timeout')
 
-    fill_in_table(driver)
+    total_iva = 0
+
+    table_iva = fill_in_table(driver)
+    total_iva += table_iva
 
     i = 1
     while has_next_page(driver):
@@ -125,24 +110,51 @@ def check_invoices(driver, year, month):
             (By.ID, 'j_id148:tblFacturas:{}:j_id165'.format(id_number)),
             str(first_number)))
 
-        fill_in_table(driver)
+        table_iva = fill_in_table(driver)
+        total_iva += table_iva
         i += 1
 
     driver.find_element_by_id(
         'j_id148:btnGuardarFacturasSeleccionadas').click()
 
+    # try:
+    #     wait.until(EC.presence_of_element_located(
+    #         (By.ID, 'j_id148:tablaDetalleArchivo')))
+    # except StaleElementReferenceException as e:
+    #     print(e)
+
+    wait.until(EC.presence_of_element_located(
+        (By.ID, 'j_id148:tablaDetalleArchivo')))
+    try:
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, '.reporte .rich-table-row td')))
+    except TimeoutException:
+        print('timeout')
+
+    summary_cells = driver.find_elements_by_css_selector(
+            '.reporte .rich-table-row td')
+    total_iva_cell = float(summary_cells[-2].text)  # debe ser igual al total iva
+
+    while total_iva_cell != total_iva:
+        summary_cells = driver.find_elements_by_css_selector(
+            '.reporte .rich-table-row td')
+        total_iva_cell = summary_cells[-2].text  # debe ser igual al total iva
+
 
 def fill_in_table(driver):
     table_rows = driver.find_elements_by_xpath(
         "//table[@id='j_id148:tblFacturas']/tbody/tr")
+    table_iva = 0
 
     for row in table_rows:
         cells = row.find_elements_by_tag_name('td')
         iva = cells[4].text
+        table_iva += float(iva)
         iva_input = cells[5].find_element_by_tag_name('input')
         iva_input.send_keys(iva)
         checkbox = cells[8].find_element_by_tag_name('input')
         checkbox.click()
+    return table_iva
 
 
 def has_next_page(driver):
