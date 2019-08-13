@@ -1,15 +1,12 @@
-import sys
 from datetime import datetime
 from time import sleep
-from decimal import getcontext, Decimal
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import StaleElementReferenceException, \
-    TimeoutException, NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 
 MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
@@ -53,123 +50,204 @@ def main():
 
     year = '2019'
     month = 'ENERO'
-    total_iva = Decimal('0')
-    monthly_iva = check_invoices(driver, year, month)
-    total_iva += monthly_iva
-    month = 'FEBRERO'
-    monthly_iva = check_invoices(driver, year, month, total_iva)
-    total_iva += monthly_iva
-    month = 'MARZO'
-    monthly_iva = check_invoices(driver, year, month, total_iva)
-    total_iva += monthly_iva
+    total_invoices = 0
+
+    current_year = datetime.now().year
+    current_month_index = datetime.now().month - 1
+    previous_years = current_year - int(year)
+
+    initial_index = MONTHS.index(month)
+
+    if previous_years:
+        # months in the first year
+        months = MONTHS[initial_index:]
+        for month in months:
+            total_invoices = check_invoices(driver, year, month,
+                                            total_invoices)
+
+    # months in the actual year
+    months = MONTHS[:current_month_index]
+    year = str(current_year)
+    for month in months:
+        total_invoices = check_invoices(driver, year, month, total_invoices)
 
     # driver.close()
-    assert 1 == 0
+    assert 1 == 0  # To exit without closing the driver
 
 
-def check_invoices(driver, year, month, monthly_iva=Decimal('0')):
+def check_invoices(driver, year, month, total_invoices):
     wait = WebDriverWait(driver, 10)
 
     # year selection
-    wait.until(EC.element_to_be_clickable((
-        By.XPATH,
-        "//select[@name='j_id148:cmbAnio']/option[text()='{}']".format(year)
-    ))).click()
+    for i in range(200):
+        try:
+            driver.find_element_by_xpath(
+                "//select[@name='j_id148:cmbAnio']/option[text()='{}']"
+                .format(year)).click()
+            break
+        except NoSuchElementException:
+            wait.until(EC.element_to_be_clickable(
+                (By.XPATH,
+                    "//select[@name='j_id148:cmbAnio']/option[text()='{}']"
+                    .format(year)))).click()
+            break
+        except Exception:
+            pass
 
     # Period selection
-    wait.until(EC.element_to_be_clickable(
-        (By.XPATH,
-            "//select[@name='j_id148:cmbPeriodo']/option[text()='{}']"
-            .format(month)))).click()
+    for i in range(200):
+        try:
+            driver.find_element_by_xpath(
+                "//select[@name='j_id148:cmbPeriodo']/option[text()='{}']"
+                .format(month)).click()
+            break
+        except NoSuchElementException:
+            wait.until(EC.element_to_be_clickable(
+                (By.XPATH,
+                    "//select[@name='j_id148:cmbPeriodo']/option[text()='{}']"
+                    .format(month)))).click()
+            break
+        except Exception:
+            pass
 
-    wait.until(EC.element_to_be_clickable(
-        (By.ID,
-            'j_id148:btnBuscarComprobantesElectronicos')))\
-        .click()
+    for i in range(200):
+        try:
+            driver.find_element_by_id(
+                'j_id148:btnBuscarComprobantesElectronicos').click()
+            break
+        except NoSuchElementException:
+            wait.until(EC.element_to_be_clickable(
+                (By.ID,
+                    'j_id148:btnBuscarComprobantesElectronicos')))\
+                    .click()
+            break
+        except Exception:
+            pass
 
-    wait.until(EC.presence_of_element_located(
-        (By.ID,
-            'j_id148:tblFacturas:paginadorFactura_table')))
+    for i in range(200):
+        try:
+            driver.find_element_by_id(
+                'j_id148:tblFacturas:paginadorFactura_table')
+            break
+        except NoSuchElementException:
+            wait.until(EC.presence_of_element_located(
+                (By.ID,
+                    'j_id148:tblFacturas:paginadorFactura_table')))
+            break
+        except Exception:
+            pass
 
-    first_number = driver.find_element_by_xpath(
-        "//table[@id='j_id148:tblFacturas']/tbody/tr/td")
-    first_number = int(first_number.text)
+    for i in range(200):
+        try:
+            first_row = driver.find_element_by_xpath(
+                "//table[@id='j_id148:tblFacturas']/tbody/tr/td")
+            break
+        except NoSuchElementException:
+            first_row = wait.until(EC.presence_of_element_located(
+                (By.XPATH,
+                    "//table[@id='j_id148:tblFacturas']/tbody/tr/td")))
+            break
+        except Exception:
+            pass
 
-    if first_number > 1:
+    first_row_number = int(first_row.text)
+
+    if first_row_number > 1:
         sleep(1)
         go_previous_page(driver)
-        try:
-            wait.until(EC.text_to_be_present_in_element(
-                (By.ID, 'j_id148:tblFacturas:0:j_id165'), '1'))
-        except TimeoutException:
-            print('timeout')
+        for i in range(200):
+            try:
+                wait.until(EC.text_to_be_present_in_element(
+                    (By.ID, 'j_id148:tblFacturas:0:j_id165'), '1'))
+                break
+            except Exception as e:
+                print(e)
 
-    table_iva = fill_in_table(driver)
-    monthly_iva += table_iva
-
+    table_invoices = fill_in_table(driver)
+    total_invoices += table_invoices
     i = 1
     while has_next_page(driver):
         go_next_page(driver)
         # wait until change of cell
-        first_number = i*10 + 1
+        first_row = i*10 + 1
         id_number = i*10
-        wait.until(EC.text_to_be_present_in_element(
-            (By.ID, 'j_id148:tblFacturas:{}:j_id165'.format(id_number)),
-            str(first_number)))
-
-        table_iva = fill_in_table(driver)
-        monthly_iva += table_iva
+        try:
+            wait.until(EC.text_to_be_present_in_element(
+                (By.ID, 'j_id148:tblFacturas:{}:j_id165'.format(id_number)),
+                str(first_row)))
+        except TimeoutException:
+            pass
+        table_invoices = fill_in_table(driver)
+        total_invoices += table_invoices
         i += 1
 
-    driver.find_element_by_id(
-        'j_id148:btnGuardarFacturasSeleccionadas').click()
+    for i in range(200):
+        try:
+            driver.find_element_by_id(
+                'j_id148:btnGuardarFacturasSeleccionadas').click()
+            break
+        except NoSuchElementException:
+            wait.until(EC.element_to_be_clickable(
+                (By.ID,
+                    'j_id148:btnGuardarFacturasSeleccionadas')))\
+                .click()
+            break
+        except Exception:
+            pass
 
-    # try:
-    #     wait.until(EC.presence_of_element_located(
-    #         (By.ID, 'j_id148:tablaDetalleArchivo')))
-    # except StaleElementReferenceException as e:
-    #     print(e)
-
-    wait.until(EC.presence_of_element_located(
-        (By.ID, 'j_id148:tablaDetalleArchivo')))
-    try:
-        wait.until(EC.presence_of_element_located(
-            (By.CSS_SELECTOR, '.reporte .rich-table-row td')))
-    except TimeoutException:
-        print('timeout')
-
-    summary_cells = driver.find_elements_by_css_selector(
-            '.reporte .rich-table-row td')
-    total_iva_cell = Decimal(summary_cells[-2].text)  # debe ser igual al monthly iva
-
-    while total_iva_cell != monthly_iva:
-        print('Iva cell:', total_iva_cell, ' Monthly iva: ', monthly_iva)
-        for i in range(4):
-            try:
-                summary_cells = driver.find_elements_by_css_selector(
-                    '.reporte .rich-table-row td')
-                total_iva_cell = summary_cells[-2].text  # debe ser igual al monthly iva
+    for i in range(200):
+        try:
+            driver.find_element_by_id(
+                'j_id148:tablaDetalleArchivo')
+            summary_cells = driver.find_elements_by_css_selector(
+                '.reporte .rich-table-row td')
+            semitotal_invoices = int(summary_cells[-3].text)
+            if semitotal_invoices == total_invoices:
                 break
-            except StaleElementReferenceException:
-                print('Stale error')
 
-    return monthly_iva
+        except NoSuchElementException:
+            wait.until(EC.presence_of_element_located(
+                (By.ID,
+                    'j_id148:tablaDetalleArchivo')))
+        except Exception:
+            pass
+
+    return total_invoices
 
 
 def fill_in_table(driver):
     table_rows = driver.find_elements_by_xpath(
         "//table[@id='j_id148:tblFacturas']/tbody/tr")
-    table_iva = Decimal('0')
 
     for row in table_rows:
-        cells = row.find_elements_by_tag_name('td')
-        iva = cells[4].text
-        table_iva += Decimal(iva)
-        iva_input = cells[5].find_element_by_tag_name('input')
-        iva_input.send_keys(iva)
-        checkbox = cells[8].find_element_by_tag_name('input')
-        checkbox.click()
-    return table_iva
+        for i in range(600):
+            try:
+                cells = row.find_elements_by_tag_name('td')
+                iva = cells[4].text
+                break
+            except Exception:
+                pass
+
+        for i in range(600):
+            try:
+                iva_input = cells[5].find_element_by_tag_name('input')
+                iva_input.clear()
+                iva_input.send_keys(iva)
+                break
+            except Exception:
+                pass
+
+        for i in range(600):
+            try:
+                checkbox = cells[8].find_element_by_tag_name('input')
+                break
+            except Exception:
+                pass
+
+        sleep(0.2)
+        if not checkbox.get_attribute('checked'):
+            checkbox.click()
+    return len(table_rows)
 
 
 def has_next_page(driver):
