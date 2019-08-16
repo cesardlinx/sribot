@@ -27,7 +27,7 @@ def main():
     default_month = defaults['Month']
 
     # ask for credentials
-    # Example: 1701120998, grado_1975*
+    # Example: 1701120998, password123
     username = validate_username(input(
                      'Ingrese su cédula de identidad [{}]: '
                      .format(default_username))) or default_username
